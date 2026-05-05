@@ -21,8 +21,12 @@
   },
   "homepage": "https://github.com/grosserknallkopf/public-transport-enabler-web-api#readme",
   "dependencies": {
+    "bvg-hafas": "^4.0.0",
     "cors": "^2.8.6",
+    "db-vendo-client": "^6.10.9",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "hafas-client": "^6.3.6",
+    "vbb-hafas": "^8.0.1"
   }
 }
