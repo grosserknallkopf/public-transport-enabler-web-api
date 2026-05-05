@@ -1,35 +1,35 @@
 # public-transport-enabler-web-api
 
-Eine Web API im Stil von **public-transport-enabler** mit Live-Daten (Provider-Capabilities wie `SUGGEST_LOCATIONS`, `NEARBY_LOCATIONS`, `DEPARTURES`, `TRIPS`).
+A Web API in the style of **public-transport-enabler** with live provider data (`SUGGEST_LOCATIONS`, `NEARBY_LOCATIONS`, `DEPARTURES`, `TRIPS`).
 
-Für **Deutsche Bahn (`db`)** wird `db-vendo-client` genutzt (statt des alten, abgeschalteten DB-HAFAS-Endpunkts).
+For **Deutsche Bahn (`db`)**, this project uses `db-vendo-client` (instead of the old/deprecated DB-HAFAS endpoint).
 
-## Lokaler Start
+## Local start
 
 ```bash
 npm install
 npm run start
 ```
 
-API läuft dann auf `http://localhost:8080`.
+The API runs on `http://localhost:8080`.
 
 Optional:
 
-- `DEFAULT_PROVIDER=db` (oder `vbb`, `bvg`)
+- `DEFAULT_PROVIDER=db` (or `vbb`, `bvg`)
 - `HAFAS_USER_AGENT=public-transport-enabler-web-api`
 
-## Endpunkte
+## Endpoints
 
 - `GET /health`
-- `GET /api/v1/providers` (inkl. erweiterter Profile aus `hafas-client`)
+- `GET /api/v1/providers` (including dynamically loaded profiles from `hafas-client`)
 - `GET /api/v1/locations/suggest?query=Berlin%20Hbf&provider=vbb&maxLocations=10`
 - `GET /api/v1/locations/nearby?latitude=52.5256&longitude=13.3690&provider=vbb&maxDistance=1000`
 - `GET /api/v1/departures?stationId=900003201&provider=vbb&maxDepartures=10`
 - `POST /api/v1/trips/query?provider=vbb`
-- `POST /api/v1/journeys/plan?provider=vbb` (Alias auf `trips/query`)
-- `POST /api/v1/planner/query?provider=db` (Journey + Preise + BetterBahn-Links + `splitTicketing`-Hinweise)
+- `POST /api/v1/journeys/plan?provider=vbb` (alias of `trips/query`)
+- `POST /api/v1/planner/query?provider=db` (journeys + fares + BetterBahn links + `splitTicketing` metadata)
 
-Beispiel-Body für Journey-Planung:
+Example request body for journey planning:
 
 ```json
 {
@@ -39,7 +39,7 @@ Beispiel-Body für Journey-Planung:
 }
 ```
 
-Alternative mit IDs:
+Alternative using IDs:
 
 ```json
 {
@@ -50,35 +50,35 @@ Alternative mit IDs:
 }
 ```
 
-Planner-API-Beispiel:
+Planner API example:
 
 ```bash
-curl -X POST "http://159.89.107.127:8080/api/v1/planner/query?provider=db" \
+curl -X POST "http://localhost:8080/api/v1/planner/query?provider=db" \
   -H "content-type: application/json" \
   -d '{"from":"Berlin Hbf","to":"Hamburg Hbf","maxResults":3}'
 ```
 
-Hinweis: Die Weboberfläche wurde in ein separates Repository ausgelagert (`public-transport-enabler-planner-ui`).
+Note: The web UI has been moved to a separate repository: `public-transport-enabler-planner-ui`.
 
-## Deployment auf DigitalOcean Droplet
+## Deployment on a DigitalOcean Droplet
 
-Voraussetzungen:
-- SSH Key für dein Droplet ist lokal vorhanden
-- `doctl` ist authentifiziert
+Requirements:
+- An SSH key for your droplet is available locally
+- `doctl` is authenticated
 
 ```bash
-# 1) Server vorbereiten (Node.js + PM2)
+# 1) Prepare server (Node.js + PM2)
 ssh root@<DROPLET_IP> "apt update && apt install -y ca-certificates curl gnupg && \
 mkdir -p /etc/apt/keyrings && \
 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
 echo 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main' > /etc/apt/sources.list.d/nodesource.list && \
 apt update && apt install -y nodejs && npm install -g pm2"
 
-# 2) App deployen
+# 2) Deploy app
 rsync -av --exclude node_modules ./ root@<DROPLET_IP>:/opt/public-transport-enabler-web-api
 ssh root@<DROPLET_IP> "cd /opt/public-transport-enabler-web-api && npm install --omit=dev && \
 PORT=8080 pm2 start src/server.js --name public-transport-enabler-web-api && pm2 save"
 
-# 3) API testen
+# 3) Test API
 curl http://<DROPLET_IP>:8080/health
 ```
