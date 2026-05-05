@@ -27,13 +27,7 @@ Optional:
 - `GET /api/v1/departures?stationId=900003201&provider=vbb&maxDepartures=10`
 - `POST /api/v1/trips/query?provider=vbb`
 - `POST /api/v1/journeys/plan?provider=vbb` (Alias auf `trips/query`)
-- `GET /planner` (moderne OSM-Weboberfläche mit:
-  - sauberer Live-Suche/Vorschlagsliste für Start & Ziel,
-  - kompakten Verbindungskarten (Abfahrt/Ankunft + Linien-Badges),
-  - Details/Umstiege/Gleise erst nach Klick auf eine Verbindung,
-  - Kartentrasse der ausgewählten Verbindung,
-  - integriertem Tarifprofil (Deutschlandticket, BahnCard, Mitreisende/Alter) für Preisberechnung)
-- `POST /api/v1/planner/query?provider=db` (Journey + Preise + BetterBahn-Links)
+- `POST /api/v1/planner/query?provider=db` (Journey + Preise + BetterBahn-Links + `splitTicketing`-Hinweise)
 
 Beispiel-Body für Journey-Planung:
 
@@ -56,13 +50,15 @@ Alternative mit IDs:
 }
 ```
 
-Planner-Beispiel:
+Planner-API-Beispiel:
 
 ```bash
 curl -X POST "http://159.89.107.127:8080/api/v1/planner/query?provider=db" \
   -H "content-type: application/json" \
   -d '{"from":"Berlin Hbf","to":"Hamburg Hbf","maxResults":3}'
 ```
+
+Hinweis: Die Weboberfläche wurde in ein separates Repository ausgelagert (`public-transport-enabler-planner-ui`).
 
 ## Deployment auf DigitalOcean Droplet
 

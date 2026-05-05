@@ -16,6 +16,26 @@ const app = express();
 const port = Number(process.env.PORT || 8080);
 const userAgent = process.env.HAFAS_USER_AGENT || "public-transport-enabler-web-api";
 const defaultProvider = String(process.env.DEFAULT_PROVIDER || "db").toLowerCase();
+const germanyProviderKeys = new Set([
+  "avv",
+  "bvg",
+  "db",
+  "hvv",
+  "insa",
+  "invg",
+  "ivb",
+  "kvb",
+  "nvv",
+  "rmv",
+  "rsag",
+  "sbahnmuenchen",
+  "vbb",
+  "vbn",
+  "vkg",
+  "vmt",
+  "vrn",
+  "vsn",
+]);
 
 app.use(cors());
 app.use(express.json());
@@ -103,6 +123,7 @@ const parseProvider = (input) => {
   const providerKey = String(input || defaultProvider).toLowerCase();
   return providers[providerKey];
 };
+const isGermanProviderKey = (key) => germanyProviderKeys.has(String(key || "").toLowerCase());
 
 const toLocationSummary = (location) => ({
   type: location.type || "location",
@@ -278,6 +299,24 @@ const mapJourneyBySignature = (journey) => {
   const firstLeg = journey?.legs?.[0];
   const lastLeg = journey?.legs?.[journey.legs.length - 1];
   return `${firstLeg?.origin?.id || firstLeg?.origin?.name || ""}|${lastLeg?.destination?.id || lastLeg?.destination?.name || ""}|${journey?.departure || firstLeg?.departure || ""}|${journey?.arrival || lastLeg?.arrival || ""}|${(journey?.legs || []).length}`;
+};
+
+const extractSplitTicketInfo = (journey, priceComparison) => {
+  const hasDiscount = Boolean(priceComparison?.hasDiscount);
+  if (!hasDiscount) return { used: false, splitPoints: [], note: null };
+  const splitPoints = (journey?.legs || [])
+    .slice(0, -1)
+    .map((leg) => leg?.destination?.name || leg?.destination?.id || null)
+    .filter(Boolean)
+    .slice(0, 5);
+  return {
+    used: true,
+    splitPoints,
+    note:
+      splitPoints.length > 0
+        ? "Split-Ticketing genutzt. Moegliche Split-Punkte basieren auf Umstiegen."
+        : "Split-Ticketing genutzt. Exakte Ticket-Aufteilung ist in der DB-Antwort nicht enthalten.",
+  };
 };
 
 const capJourneys = (journeys, limit = 4) => journeys.slice(0, limit);
@@ -838,13 +877,21 @@ app.get("/health", (_req, res) => {
 app.get("/api/v1/providers", (_req, res) => {
   res.json({
     defaultProvider,
-    items: Object.values(providers).map(({ key, name, capabilities }) => ({ key, name, capabilities })),
+    items: Object.values(providers).map(({ key, name, capabilities }) => ({
+      key,
+      name,
+      capabilities,
+      country: isGermanProviderKey(key) ? "DE" : "OTHER",
+      supportsDeutschlandticket: key === "db",
+    })),
   });
 });
 
 app.get("/planner", (_req, res) => {
-  res.setHeader("content-type", "text/html; charset=utf-8");
-  res.send(getPlannerHtml());
+  res.status(404).json({
+    error: "Planner UI moved",
+    details: "Use the dedicated planner repository/deployment.",
+  });
 });
 
 app.get("/api/v1/locations/suggest", async (req, res) => {
@@ -1095,6 +1142,11 @@ app.post("/api/v1/planner/query", async (req, res) => {
     }
 
     const fareProfile = normalizeFareProfile(req.body?.faresProfile);
+    const supportsDeutschlandticket = provider.key === "db";
+    if (!supportsDeutschlandticket) {
+      fareProfile.deutschlandTicket = false;
+      fareProfile.deutschlandTicketOnly = false;
+    }
 
     const baseJourneyOptions = {
       results: parsePositiveInt(req.body?.maxResults || req.query.maxResults, 5, 20),
@@ -1169,40 +1221,49 @@ app.post("/api/v1/planner/query", async (req, res) => {
       const discountedAmount = Number(discountedPrice?.amount);
       if (Number.isFinite(baseAmount) && Number.isFinite(discountedAmount)) {
         const savings = Math.max(baseAmount - discountedAmount, 0);
+        const priceComparison = {
+          base: { amount: baseAmount, currency: basePrice?.currency || "EUR" },
+          discounted: { amount: discountedAmount, currency: discountedPrice?.currency || "EUR" },
+          savings,
+          hasDiscount: savings > 0,
+        };
         return {
           ...summarized,
-          priceComparison: {
-            base: { amount: baseAmount, currency: basePrice?.currency || "EUR" },
-            discounted: { amount: discountedAmount, currency: discountedPrice?.currency || "EUR" },
-            savings,
-            hasDiscount: savings > 0,
-          },
+          priceComparison,
+          splitTicketing: extractSplitTicketInfo(journey, priceComparison),
         };
       }
       if (Number.isFinite(discountedAmount)) {
+        const priceComparison = {
+          base: null,
+          discounted: { amount: discountedAmount, currency: summarized.price?.currency || "EUR" },
+          savings: 0,
+          hasDiscount: false,
+        };
         return {
           ...summarized,
-          priceComparison: {
-            base: null,
-            discounted: { amount: discountedAmount, currency: summarized.price?.currency || "EUR" },
-            savings: 0,
-            hasDiscount: false,
-          },
+          priceComparison,
+          splitTicketing: extractSplitTicketInfo(journey, priceComparison),
         };
       }
       if (Number.isFinite(baseAmount)) {
+        const priceComparison = {
+          base: { amount: baseAmount, currency: basePrice?.currency || "EUR" },
+          discounted: null,
+          savings: 0,
+          hasDiscount: false,
+        };
         return {
           ...summarized,
           price: { amount: baseAmount, currency: basePrice?.currency || "EUR", hint: null },
-          priceComparison: {
-            base: { amount: baseAmount, currency: basePrice?.currency || "EUR" },
-            discounted: null,
-            savings: 0,
-            hasDiscount: false,
-          },
+          priceComparison,
+          splitTicketing: extractSplitTicketInfo(journey, priceComparison),
         };
       }
-      return summarized;
+      return {
+        ...summarized,
+        splitTicketing: extractSplitTicketInfo(journey, summarized.priceComparison),
+      };
     });
 
     const betterbahnParams = new URLSearchParams();
@@ -1232,6 +1293,10 @@ app.post("/api/v1/planner/query", async (req, res) => {
         note: "BetterBahn focuses on DB split-ticketing.",
       },
       faresProfile: fareProfile,
+      providerMeta: {
+        supportsDeutschlandticket,
+        country: isGermanProviderKey(provider.key) ? "DE" : "OTHER",
+      },
       journeys,
     });
   } catch (error) {
