@@ -301,24 +301,6 @@ const mapJourneyBySignature = (journey) => {
   return `${firstLeg?.origin?.id || firstLeg?.origin?.name || ""}|${lastLeg?.destination?.id || lastLeg?.destination?.name || ""}|${journey?.departure || firstLeg?.departure || ""}|${journey?.arrival || lastLeg?.arrival || ""}|${(journey?.legs || []).length}`;
 };
 
-const extractSplitTicketInfo = (journey, priceComparison) => {
-  const hasDiscount = Boolean(priceComparison?.hasDiscount);
-  if (!hasDiscount) return { used: false, splitPoints: [], note: null };
-  const splitPoints = (journey?.legs || [])
-    .slice(0, -1)
-    .map((leg) => leg?.destination?.name || leg?.destination?.id || null)
-    .filter(Boolean)
-    .slice(0, 5);
-  return {
-    used: true,
-    splitPoints,
-    note:
-      splitPoints.length > 0
-        ? "Split-Ticketing genutzt. Moegliche Split-Punkte basieren auf Umstiegen."
-        : "Split-Ticketing genutzt. Exakte Ticket-Aufteilung ist in der DB-Antwort nicht enthalten.",
-  };
-};
-
 const capJourneys = (journeys, limit = 4) => journeys.slice(0, limit);
 
 const getPlannerHtml = () => `<!doctype html>
@@ -1230,7 +1212,6 @@ app.post("/api/v1/planner/query", async (req, res) => {
         return {
           ...summarized,
           priceComparison,
-          splitTicketing: extractSplitTicketInfo(journey, priceComparison),
         };
       }
       if (Number.isFinite(discountedAmount)) {
@@ -1243,7 +1224,6 @@ app.post("/api/v1/planner/query", async (req, res) => {
         return {
           ...summarized,
           priceComparison,
-          splitTicketing: extractSplitTicketInfo(journey, priceComparison),
         };
       }
       if (Number.isFinite(baseAmount)) {
@@ -1257,13 +1237,9 @@ app.post("/api/v1/planner/query", async (req, res) => {
           ...summarized,
           price: { amount: baseAmount, currency: basePrice?.currency || "EUR", hint: null },
           priceComparison,
-          splitTicketing: extractSplitTicketInfo(journey, priceComparison),
         };
       }
-      return {
-        ...summarized,
-        splitTicketing: extractSplitTicketInfo(journey, summarized.priceComparison),
-      };
+      return summarized;
     });
 
     const betterbahnParams = new URLSearchParams();
